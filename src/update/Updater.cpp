@@ -83,6 +83,9 @@ void Updater::checkNow()
     QNetworkRequest req{ QUrl("https://api.github.com/repos/" VOICE_REPO "/releases/latest") };
     req.setRawHeader("User-Agent", "VoiceAssistant-updater");
     req.setRawHeader("Accept", "application/vnd.github+json");
+    // 可选：设置 VA_GITHUB_TOKEN 环境变量可绕过匿名 API 限流
+    if (const QByteArray tok = qEnvironmentVariable("VA_GITHUB_TOKEN").toUtf8(); !tok.isEmpty())
+        req.setRawHeader("Authorization", "Bearer " + tok);
     auto *reply = nam_->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply] {
         reply->deleteLater();
