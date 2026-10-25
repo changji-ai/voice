@@ -1,0 +1,183 @@
+name: build-release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  SHERPA_VERSION: v1.12.40
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win-x64
+            qt_host: windows
+            qt_arch: win64_msvc2022_64
+          - os: macos-13
+            platform: mac-x64
+            qt_host: mac
+            qt_arch: clang_64
+          - os: macos-14
+            platform: mac-arm64
+            qt_host: mac
+            qt_arch: arm64
+          - os: ubuntu-24.04
+            platform: linux-x64
+            qt_host: ""
+            qt_arch: ""
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            qt_host: ""
+            qt_arch: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 版本号
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0-dev.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
+          fi
+
+      # ---------- Qt ----------
+      - name: 安装 Qt（Windows / macOS）
+        if: matrix.qt_host != ''
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: ${{ matrix.qt_host }}
+          target: 'desktop'
+          arch: ${{ matrix.qt_arch }}
+          modules: 'qtmultimedia qtwebsockets'
+
+      - name: 安装 Qt（Linux，发行版源）
+        if: matrix.qt_host == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qt6-base-dev qt6-multimedia-dev qt6-websockets-dev \
+            libgl1-mesa-dev ninja-build unzip zip
+
+      # ---------- sherpa-onnx ----------
+      - name: 下载 sherpa-onnx
+        shell: bash
+        run: |
+          case "${{ matrix.platform }}" in
+            win-x64)     asset="sherpa-onnx-v1.12.40-win-x64-shared-MD-Release.tar.bz2" ;;
+            mac-x64)     asset="sherpa-onnx-v1.12.40-osx-x64-shared.tar.bz2" ;;
+            mac-arm64)   asset="sherpa-onnx-v1.12.40-osx-arm64-shared.tar.bz2" ;;
+            linux-x64)   asset="sherpa-onnx-v1.12.40-linux-x64-shared.tar.bz2" ;;
+            linux-arm64) asset="sherpa-onnx-v1.12.40-linux-aarch64-shared-cpu.tar.bz2" ;;
+          esac
+          curl -fL --retry 3 -o sherpa.tar.bz2 \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/${SHERPA_VERSION}/${asset}"
+          mkdir sherpa && tar -xjf sherpa.tar.bz2 -C sherpa --strip-components=1
+          find sherpa -maxdepth 2 | head -20
+
+      # ---------- 编译 ----------
+      - name: MSVC 环境
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: 配置 + 编译
+        shell: bash
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSHERPA_ROOT="$GITHUB_WORKSPACE/sherpa" \
+            -DBUILD_TESTS=OFF
+          cmake --build build --parallel
+
+      # ---------- 部署依赖 ----------
+      - name: 部署（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          windeployqt --release --no-translations build/VoiceAssistant.exe
+          Copy-Item sherpa/bin/onnxruntime.dll build/ -Force
+          Copy-Item sherpa/lib/sherpa-onnx-c-api.dll build/ -Force
+          # 本地开发用的 third_party DLL 不进包（版本以 CI 下载为准）
+
+      - name: 部署（macOS）
+        if: runner.os == 'macOS'
+        run: |
+          macdeployqt build/VoiceAssistant.app
+          mkdir -p build/VoiceAssistant.app/Contents/Frameworks
+          cp sherpa/lib/libsherpa-onnx-c-api.dylib build/VoiceAssistant.app/Contents/Frameworks/
+          cp sherpa/lib/libonnxruntime*.dylib build/VoiceAssistant.app/Contents/Frameworks/ 2>/dev/null || \
+            cp sherpa/bin/libonnxruntime*.dylib build/VoiceAssistant.app/Contents/Frameworks/
+          BIN="build/VoiceAssistant.app/Contents/MacOS/VoiceAssistant"
+          install_name_tool -change "$(otool -L $BIN | grep libsherpa-onnx-c-api | awk '{print $1}')" \
+            "@rpath/libsherpa-onnx-c-api.dylib" "$BIN" || true
+          install_name_tool -add_rpath "@executable_path/../Frameworks" "$BIN" || true
+          otool -L "$BIN" | head -10
+
+      - name: 部署（Linux）
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist/lib
+          cp build/VoiceAssistant dist/
+          # 收集非系统动态库（Qt / sherpa / onnxruntime / stdc++）
+          ldd dist/VoiceAssistant | awk '{print $3}' | grep -E '^/' | \
+            grep -E 'Qt6|sherpa|onnxruntime|stdc\+\+|gcc_s|icu|double-conversion|graphite|harfbuzz|png|jpeg|freetype|proxy|xcb|X11|wayland|gbm|drm|EGL|GL\.|glvnd|asound|pulse|systemd|dav1d|va\.|vdpau|ass|swresample|swscale|avcodec|avformat|avutil|ogg|vorbis|opus|mp3lame|z\.so|bz2|lzma|brotli|b2|idn|ssh|crypto|ssl|glib|gio|gobject' | \
+            sort -u | xargs -I{} cp -n {} dist/lib/ || true
+          # Qt 插件
+          PLUG=/usr/lib/${{ matrix.platform == 'linux-arm64' && 'aarch64-linux-gnu' || 'x86_64-linux-gnu' }}/qt6/plugins
+          mkdir -p dist/plugins
+          for p in platforms multimedia imageformats iconengines tls networkinformation; do
+            [ -d "$PLUG/$p" ] && cp -r "$PLUG/$p" dist/plugins/
+          done
+          printf '[Paths]\nPlugins=plugins\n' > dist/qt.conf
+
+      # ---------- 打包 ----------
+      - name: 打包 zip
+        shell: bash
+        run: |
+          ARTIFACT="VoiceAssistant-${VERSION}-${{ matrix.platform }}.zip"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            ditto -c -k --keepParent "build/VoiceAssistant.app" "$ARTIFACT"
+          elif [[ "$RUNNER_OS" == "Linux" ]]; then
+            cd dist && zip -r "../$ARTIFACT" . && cd ..
+          else
+            powershell Compress-Archive -Path build/VoiceAssistant.exe,build/*.dll -DestinationPath "$ARTIFACT"
+          fi
+          ls -lh "$ARTIFACT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: VoiceAssistant-*.zip
+          retention-days: 7
+
+  release:
+    name: 发布 Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -lh artifacts/
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            artifacts/*.zip
