@@ -82,6 +82,13 @@ jobs:
           curl -fL --retry 3 -o sherpa.tar.bz2 \
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/${SHERPA_VERSION}/${asset}"
           mkdir sherpa && tar -xjf sherpa.tar.bz2 -C sherpa --strip-components=1
+          # linux-aarch64 包不含 include/，从 x64 包提取（头文件与架构无关）
+          if [ ! -d sherpa/include ]; then
+            curl -fL --retry 3 -o sherpa-hdr.tar.bz2 \
+              "https://github.com/k2-fsa/sherpa-onnx/releases/download/${SHERPA_VERSION}/sherpa-onnx-v1.12.40-linux-x64-shared.tar.bz2"
+            tar -xjf sherpa-hdr.tar.bz2 -C sherpa --strip-components=1 --wildcards '*/include/*'
+            rm -f sherpa-hdr.tar.bz2
+          fi
           find sherpa -maxdepth 2 | head -20
 
       # ---------- 编译 ----------
