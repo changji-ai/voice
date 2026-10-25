@@ -27,7 +27,7 @@ jobs:
           - os: macos-14
             platform: mac-arm64
             qt_host: mac
-            qt_arch: arm64
+            qt_arch: clang_64   # Qt 6.8.3 macOS 包是 X86_64+ARM64 通用二进制，两个 mac 架构都用它
           - os: ubuntu-24.04
             platform: linux-x64
             qt_host: ""

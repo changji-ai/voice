@@ -48,9 +48,14 @@ ParaformerStt::ParaformerStt(const AppSettings &cfg) : SttEngine(nullptr)
             ws_.close();
         }
     });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     connect(&ws_, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError e) {
         emit errorOccurred(QString("Paraformer 连接错误: %1 (%2)").arg(int(e)).arg(ws_.errorString()));
     });
+#else
+    // Qt 6.4（如 Ubuntu 24.04 发行版源）没有 errorOccurred，用旧信号
+    connect(&ws_, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onWsError(QAbstractSocket::SocketError)));
+#endif
 }
 
 ParaformerStt::~ParaformerStt()
@@ -64,6 +69,11 @@ void ParaformerStt::start()
     req.setRawHeader("Authorization", ("Bearer " + apiKey_).toUtf8());
     req.setRawHeader("user-agent", "qt-voice-assistant/1.0");
     ws_.open(req);
+}
+
+void ParaformerStt::onWsError(QAbstractSocket::SocketError e)
+{
+    emit errorOccurred(QString("Paraformer 连接错误: %1 (%2)").arg(int(e)).arg(ws_.errorString()));
 }
 
 void ParaformerStt::sendRunTask()

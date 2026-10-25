@@ -16,28 +16,33 @@ if(NOT DEFINED SHERPA_ROOT)
   set(SHERPA_ROOT ${CMAKE_SOURCE_DIR}/third_party/sherpa-onnx)
 endif()
 add_library(sherpa-onnx-c-api SHARED IMPORTED GLOBAL)
+# 官方发布包头文件在 include/sherpa-onnx/c-api/，本地 third_party 在 include/ —— 两个都加
+set(SHERPA_INC_DIRS ${SHERPA_ROOT}/include)
+if(EXISTS ${SHERPA_ROOT}/include/sherpa-onnx/c-api/c-api.h)
+  list(APPEND SHERPA_INC_DIRS ${SHERPA_ROOT}/include/sherpa-onnx/c-api)
+endif()
 if(WIN32)
   if(EXISTS ${SHERPA_ROOT}/lib/sherpa-onnx-c-api.lib)
     # MSVC / 官方包：导入库 + DLL
     set_target_properties(sherpa-onnx-c-api PROPERTIES
       IMPORTED_LOCATION ${SHERPA_ROOT}/bin/sherpa-onnx-c-api.dll
       IMPORTED_IMPLIB ${SHERPA_ROOT}/lib/sherpa-onnx-c-api.lib
-      INTERFACE_INCLUDE_DIRECTORIES ${SHERPA_ROOT}/include)
+      INTERFACE_INCLUDE_DIRECTORIES "${SHERPA_INC_DIRS}")
   else()
     # MinGW：直接把 DLL 当导入库链接
     set_target_properties(sherpa-onnx-c-api PROPERTIES
       IMPORTED_LOCATION ${SHERPA_ROOT}/bin/sherpa-onnx-c-api.dll
       IMPORTED_IMPLIB ${SHERPA_ROOT}/bin/sherpa-onnx-c-api.dll
-      INTERFACE_INCLUDE_DIRECTORIES ${SHERPA_ROOT}/include)
+      INTERFACE_INCLUDE_DIRECTORIES "${SHERPA_INC_DIRS}")
   endif()
 elseif(APPLE)
   set_target_properties(sherpa-onnx-c-api PROPERTIES
     IMPORTED_LOCATION ${SHERPA_ROOT}/lib/libsherpa-onnx-c-api.dylib
-    INTERFACE_INCLUDE_DIRECTORIES ${SHERPA_ROOT}/include)
+    INTERFACE_INCLUDE_DIRECTORIES "${SHERPA_INC_DIRS}")
 else()
   set_target_properties(sherpa-onnx-c-api PROPERTIES
     IMPORTED_LOCATION ${SHERPA_ROOT}/lib/libsherpa-onnx-c-api.so
-    INTERFACE_INCLUDE_DIRECTORIES ${SHERPA_ROOT}/include)
+    INTERFACE_INCLUDE_DIRECTORIES "${SHERPA_INC_DIRS}")
 endif()
 
 set(SOURCES

@@ -17,6 +17,9 @@ public:
     void feed(const QByteArray &pcm) override;
     void stop() override;
 
+private slots:
+    void onWsError(QAbstractSocket::SocketError e);
+
 private:
     void sendRunTask();
 
