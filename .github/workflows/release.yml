@@ -165,8 +165,14 @@ jobs:
           elif [[ "$RUNNER_OS" == "Linux" ]]; then
             cd dist && zip -r "../$ARTIFACT" . && cd ..
           else
-            # 打包整个 build 目录内容（含 platforms/ 等插件子目录）
-            powershell Compress-Archive -Path build/* -DestinationPath "$ARTIFACT"
+            # 组装运行时目录（exe + dll + 插件子目录），避免把 CMake 中间文件打进包
+            mkdir -p package
+            cp build/VoiceAssistant.exe package/
+            cp build/*.dll package/
+            for d in platforms styles imageformats iconengines tls networkinformation multimedia translations; do
+              [ -d "build/$d" ] && cp -r "build/$d" package/
+            done
+            powershell -Command "Compress-Archive -Path package/* -DestinationPath '$ARTIFACT'"
           fi
           ls -lh "$ARTIFACT"
 
