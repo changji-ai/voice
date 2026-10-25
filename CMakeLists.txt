@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
 project(VoiceAssistant VERSION 1.0.0 LANGUAGES CXX)
 
+# CI 发布时由 workflow 注入 tag 版本（-DVOICE_APP_VERSION=1.2.3）
+if(DEFINED VOICE_APP_VERSION)
+  set(PROJECT_VERSION ${VOICE_APP_VERSION})
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)

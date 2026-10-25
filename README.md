@@ -3,6 +3,8 @@
 实时语音对话桌面应用：**实时语音识别（STT）→ LLM 理解 → 实时语音合成（TTS）**，全程可打断。
 STT / TTS / LLM 的引擎与模型全部可在设置里切换，支持**本地离线**与**在线 API** 两条链路。
 
+下载安装：[GitHub Releases](https://github.com/changji-ai/voice/releases/latest)，提供 win-x64 / mac-x64 / mac-arm64 / linux-x64 / linux-arm64 五个平台的免安装 zip。
+
 ## 功能
 
 - 实时对话：麦克风持续监听，说完一句话（静音判定）自动送 LLM，回答流式逐句朗读
@@ -18,6 +20,23 @@ STT / TTS / LLM 的引擎与模型全部可在设置里切换，支持**本地�
 - LLM：任意 OpenAI 兼容接口（Base URL / API Key / 模型名 / system prompt 可配），流式输出按句朗读
 - **音色克隆**：设置 → 音色克隆，拖入视频/音频文件 → ffmpeg 自动提取前 25 秒人声（去除背景音乐）→ 上传云端复刻生成音色 → 在 CosyVoice 引擎下选用
 - 本地模型一键下载（ModelScope / hf-mirror 双源，断点续传，进度显示）
+
+## 自动更新
+
+应用内自带自动更新：启动 5 秒后自动检查 GitHub Releases 最新版，发现新版本弹窗确认后：
+进度条下载 → 解压 → 静默替换安装目录 → 自动重启新版，全程无需手动操作；也可点「⟳ 检查更新」手动触发。
+设置环境变量 `VA_GITHUB_TOKEN` 可绕过匿名 API 限流（可选）。
+
+macOS 首次打开未签名应用需右键→打开，或 `xattr -d com.apple.quarantine VoiceAssistant.app`。
+
+## 发布新版本
+
+```powershell
+git tag v1.2.3
+# （CMakeLists.txt 里的 project VERSION 也要同步改）
+git push origin v1.2.3
+```
+推 tag 后 GitHub Actions 自动构建 5 个平台并发布 Release（见 `.github/workflows/release.yml`）。
 
 ## 环境要求
 
